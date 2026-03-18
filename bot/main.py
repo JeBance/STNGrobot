@@ -22,6 +22,7 @@ from bot.handlers import (
     specialist_router,
     callback_router,
 )
+from bot.keyboards import get_groups_keyboard
 
 # Настройка логирования
 log_config_path = Path(__file__).parent.parent / "logging.ini"
@@ -66,8 +67,7 @@ def create_app() -> Dispatcher:
         if message.text.startswith("/"):
             return
 
-        from utils.repositories import UserRepository, RequestRepository
-        from utils.keyboards import get_groups_keyboard
+        from utils.repositories import UserRepository, RequestRepository, GroupRepository
         from db.models import UserRole
         from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -157,9 +157,10 @@ async def main():
         return
 
     dp = create_app()
+    bot = Bot(token=BOT_TOKEN)
 
     try:
-        await dp.start_polling()
+        await dp.start_polling(bot)
     except KeyboardInterrupt:
         logger.info("Остановка бота по Ctrl+C")
     except Exception as e:

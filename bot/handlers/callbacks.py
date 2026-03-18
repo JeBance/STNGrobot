@@ -16,7 +16,7 @@ from utils.repositories import (
     RequestRepository,
     AssignmentRepository,
 )
-from utils.keyboards import (
+from bot.keyboards import (
     get_groups_keyboard,
     get_specialists_keyboard,
     get_request_status_keyboard,
