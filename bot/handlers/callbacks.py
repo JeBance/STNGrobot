@@ -406,6 +406,29 @@ async def callback_request_complete(
     except TelegramBadRequest:
         pass
 
+    # Уведомляем остальных специалистов группы что заявка выполнена
+    try:
+        # Получаем всех специалистов группы (если заявка была отправлена группе)
+        if request.assigned_group:
+            specialists_in_group = await spec_repo.get_by_group(request.assigned_group)
+            notification = f"⚠️ Заявка #{request_id} уже выполнена специалистом {html.escape(user.full_name)}!"
+            
+            for spec in specialists_in_group:
+                if spec.id != specialist.id:  # Не отправляем тому кто выполнил
+                    try:
+                        # Пытаемся удалить кнопки у сообщения этого специалиста
+                        # Примечание: это работает только если у нас есть message_id
+                        # Пока просто отправляем уведомление
+                        await callback.bot.send_message(
+                            spec.user.telegram_id,
+                            notification,
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.debug(f"Не удалось уведомить специалиста {spec.user.telegram_id}: {e}")
+    except Exception as e:
+        logger.warning(f"Ошибка при уведомлении специалистов: {e}")
+
     await callback.answer("✅ Заявка отмечена как выполненная!")
     logger.info(f"Specialist {user.telegram_id} выполнил заявку #{request_id}")
 
