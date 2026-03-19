@@ -28,7 +28,8 @@ async def cmd_admin(message: Message, session):
     text = (
         "🛠 Панель администратора\n\n"
         "Управление заявками:\n"
-        "/requests [status] - список заявок (new/assigned/completed/cancelled)\n\n"
+        "/requests [status] - список заявок (new/assigned/completed/cancelled)\n"
+        "/stats - статистика по заявкам\n\n"
         "Управление группами:\n"
         "/add_group <название> - создать группу\n"
         "/delete_group <название> - удалить группу\n"
@@ -471,4 +472,68 @@ async def cmd_requests(message: Message, session):
     if len(requests) > 20:
         text += f"\n... и ещё {len(requests) - 20} заявок"
 
+    await message.answer(text, parse_mode=None)
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message, session):
+    """Статистика по заявкам."""
+    from sqlalchemy import func
+    from datetime import datetime, timedelta, timezone
+    
+    user_repo = UserRepository(session)
+    request_repo = RequestRepository(session)
+
+    user = await user_repo.get_by_telegram_id(message.from_user.id)
+
+    if not user or user.role not in [UserRole.ADMIN, UserRole.ROOT]:
+        await message.answer("❌ У вас нет прав для просмотра статистики.", parse_mode=None)
+        return
+
+    # Получаем общую статистику
+    all_requests = await request_repo.get_all()
+    
+    # Статистика по статусам
+    status_counts = {}
+    for status in RequestStatus:
+        count = len([r for r in all_requests if r.status == status])
+        status_counts[status.value] = count
+    
+    # Статистика по времени
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=7)
+    month_start = today_start - timedelta(days=30)
+    
+    today_count = len([r for r in all_requests if r.created_at >= today_start])
+    week_count = len([r for r in all_requests if r.created_at >= week_start])
+    month_count = len([r for r in all_requests if r.created_at >= month_start])
+    
+    # Статистика по специалистам
+    spec_repo = SpecialistRepository(session)
+    specialists = await spec_repo.get_all_with_groups()
+    
+    # Статистика по группам
+    group_repo = GroupRepository(session)
+    groups = await group_repo.get_with_specialists_count()
+    
+    # Формируем сообщение
+    text = "📊 Статистика системы STNGrobot\n\n"
+    
+    text += "📋 Заявки:\n"
+    text += f"  Всего: {len(all_requests)}\n"
+    text += f"  🆕 Новые: {status_counts.get('new', 0)}\n"
+    text += f"  📝 В работе: {status_counts.get('assigned', 0)}\n"
+    text += f"  ✅ Выполнено: {status_counts.get('completed', 0)}\n"
+    text += f"  ❌ Отменено: {status_counts.get('cancelled', 0)}\n\n"
+    
+    text += "📅 По времени:\n"
+    text += f"  За сегодня: {today_count}\n"
+    text += f"  За неделю: {week_count}\n"
+    text += f"  За месяц: {month_count}\n\n"
+    
+    text += f"👥 Пользователей: {len(await user_repo.get_all_users())}\n"
+    text += f"👨‍🔧 Специалистов: {len(specialists)}\n"
+    text += f"📁 Групп: {len(groups)}\n"
+    
     await message.answer(text, parse_mode=None)
