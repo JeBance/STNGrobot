@@ -228,7 +228,7 @@ async def callback_send_to_all(
         f"🔔 Новая заявка #{request_id}\n\n"
         f"От: {html.escape(request_user.full_name)}\n"
         f"Текст: {html.escape(request.text)}\n\n"
-        f"Заявка отправлена всей группе. Кто первый выполнит - тому зачёт!\n"
+        f"Заявка отправлена всей группе.\n"
         f"Нажмите 'Выполнено' после завершения работы."
     )
 

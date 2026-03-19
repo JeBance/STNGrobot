@@ -3,7 +3,7 @@
 """
 import logging
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.filters import Command
 
 from db.models import UserRole
@@ -123,17 +123,18 @@ async def handle_phone_contact(message: Message, session):
         )
         await session.commit()
         
+        # Удаляем клавиатуру полностью
         await message.answer(
             f"✅ Спасибо! Номер телефона {message.contact.phone_number} сохранён.\n\n"
             "Теперь вы можете создать заявку, просто отправив текстовое сообщение.",
-            reply_markup=None,  # Убираем клавиатуру
+            reply_markup=ReplyKeyboardRemove(),
             parse_mode=None
         )
         logger.info(f"Пользователь {user.telegram_id} отправил номер телефона: {message.contact.phone_number}")
     else:
-        # Если пользователь не найден, убираем клавиатуру
+        # Если пользователь не найден, удаляем клавиатуру
         await message.answer(
             "❌ Произошла ошибка. Пожалуйста, нажмите /start для регистрации.",
-            reply_markup=None,
+            reply_markup=ReplyKeyboardRemove(),
             parse_mode=None
         )
