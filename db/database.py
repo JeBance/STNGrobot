@@ -14,7 +14,8 @@ class Database:
             self.engine, class_=AsyncSession, expire_on_commit=False
         )
 
-    async def get_session(self) -> AsyncSession:
+    async def get_session(self):
+        """Async generator для сессий."""
         async with self.async_session_maker() as session:
             yield session
 

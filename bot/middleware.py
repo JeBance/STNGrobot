@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class DatabaseMiddleware(BaseMiddleware):
     """Middleware для предоставления сессии БД в хендлеры."""
 
-    def __init__(self, session_getter: Callable[[], AsyncSession]):
+    def __init__(self, session_getter):
         self.session_getter = session_getter
 
     async def __call__(
@@ -19,6 +19,6 @@ class DatabaseMiddleware(BaseMiddleware):
         event: Message | CallbackQuery,
         data: Dict[str, Any],
     ) -> Any:
-        async with self.session_getter() as session:
+        async for session in self.session_getter():
             data["session"] = session
             return await handler(event, data)

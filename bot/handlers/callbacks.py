@@ -1,12 +1,14 @@
 """
 Обработчики callback-запросов (inline-кнопок).
 """
+import html
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from db.models import UserRole, RequestStatus, AssignmentStatus, Specialist, Group, RequestAssignment
 from utils.repositories import (
@@ -76,18 +78,18 @@ async def callback_group_select(
     request_user = request.user
     text = (
         f"📋 Заявка #{request_id}\n"
-        f"От: {request_user.full_name}\n"
-        f"Текст: {request.text}\n\n"
-        f"Группа: {group.name}\n"
+        f"От: {html.escape(request_user.full_name)}\n"
+        f"Текст: {html.escape(request.text)}\n\n"
+        f"Группа: {html.escape(group.name)}\n"
         f"Выберите специалиста:"
     )
 
     keyboard = get_specialists_keyboard(specialists, group_id, request_id)
 
     try:
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramBadRequest:
-        await callback.message.answer(text, reply_markup=keyboard)
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
     await callback.answer()
 
@@ -123,8 +125,12 @@ async def callback_spec_select(
         await callback.answer("❌ Заявка не найдена", show_alert=True)
         return
 
-    # Получаем специалиста по ID
-    result = await session.execute(select(Specialist).where(Specialist.id == specialist_id))
+    # Получаем специалиста по ID с загрузкой user
+    result = await session.execute(
+        select(Specialist)
+        .options(selectinload(Specialist.user))
+        .where(Specialist.id == specialist_id)
+    )
     specialist = result.scalar_one_or_none()
 
     if not specialist:
@@ -144,8 +150,8 @@ async def callback_spec_select(
     spec_user = specialist.user
     text = (
         f"🔔 Новая заявка #{request_id}\n\n"
-        f"От: {request_user.full_name}\n"
-        f"Текст: {request.text}\n\n"
+        f"От: {html.escape(request_user.full_name)}\n"
+        f"Текст: {html.escape(request.text)}\n\n"
         f"Нажмите 'Выполнено' после завершения работы."
     )
 
@@ -153,7 +159,7 @@ async def callback_spec_select(
 
     try:
         await callback.bot.send_message(
-            spec_user.telegram_id, text, reply_markup=keyboard
+            spec_user.telegram_id, text, reply_markup=keyboard, parse_mode="HTML"
         )
     except TelegramBadRequest as e:
         logger.warning(f"Не удалось отправить заявку специалисту {spec_user.telegram_id}: {e}")
@@ -161,7 +167,8 @@ async def callback_spec_select(
         return
 
     await callback.message.edit_text(
-        f"✅ Заявка #{request_id} назначена специалисту {spec_user.full_name}"
+        f"✅ Заявка #{request_id} назначена специалисту {html.escape(spec_user.full_name)}",
+        parse_mode="HTML"
     )
 
     logger.info(f"Admin {admin.telegram_id} назначил заявку #{request_id} специалисту {spec_user.telegram_id}")
@@ -219,8 +226,8 @@ async def callback_send_to_all(
     request_user = request.user
     text = (
         f"🔔 Новая заявка #{request_id}\n\n"
-        f"От: {request_user.full_name}\n"
-        f"Текст: {request.text}\n\n"
+        f"От: {html.escape(request_user.full_name)}\n"
+        f"Текст: {html.escape(request.text)}\n\n"
         f"Заявка отправлена всей группе. Кто первый выполнит - тому зачёт!\n"
         f"Нажмите 'Выполнено' после завершения работы."
     )
@@ -232,14 +239,15 @@ async def callback_send_to_all(
         spec_user = specialist.user
         try:
             await callback.bot.send_message(
-                spec_user.telegram_id, text, reply_markup=keyboard
+                spec_user.telegram_id, text, reply_markup=keyboard, parse_mode="HTML"
             )
             sent_count += 1
         except TelegramBadRequest as e:
             logger.warning(f"Не удалось отправить заявку специалисту {spec_user.telegram_id}: {e}")
 
     await callback.message.edit_text(
-        f"✅ Заявка #{request_id} отправлена {sent_count} специалистам группы"
+        f"✅ Заявка #{request_id} отправлена {sent_count} специалистам группы",
+        parse_mode=None
     )
 
     logger.info(f"Admin {admin.telegram_id} отправил заявку #{request_id} всей группе ({sent_count} чел.)")
@@ -284,17 +292,17 @@ async def callback_back_to_groups(
     request_user = request.user
     text = (
         f"📋 Заявка #{request_id}\n"
-        f"От: {request_user.full_name}\n"
-        f"Текст: {request.text}\n\n"
+        f"От: {html.escape(request_user.full_name)}\n"
+        f"Текст: {html.escape(request.text)}\n\n"
         f"Выберите группу специалистов:"
     )
 
     keyboard = get_groups_keyboard(groups, request_id)
 
     try:
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramBadRequest:
-        await callback.message.answer(text, reply_markup=keyboard)
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
     await callback.answer()
 
@@ -351,7 +359,7 @@ async def callback_request_complete(
 
     # Обновляем назначение
     await assignment_repo.update_status(
-        assignment, AssignmentStatus.COMPLETED, completed_at=datetime.utcnow()
+        assignment, AssignmentStatus.COMPLETED, completed_at=datetime.now(timezone.utc)
     )
 
     # Отменяем остальные назначения
@@ -362,7 +370,7 @@ async def callback_request_complete(
         request,
         RequestStatus.COMPLETED,
         completed_by=specialist.id,
-        completed_at=datetime.utcnow(),
+        completed_at=datetime.now(timezone.utc),
     )
 
     # Уведомляем админов
@@ -372,12 +380,12 @@ async def callback_request_complete(
 
     notification_text = (
         f"✅ Заявка #{request_id} выполнена!\n"
-        f"Специалист: {user.full_name}"
+        f"Специалист: {html.escape(user.full_name)}"
     )
 
     for admin_user in all_admins:
         try:
-            await callback.bot.send_message(admin_user.telegram_id, notification_text)
+            await callback.bot.send_message(admin_user.telegram_id, notification_text, parse_mode="HTML")
         except Exception as e:
             logger.warning(f"Не удалось уведомить адина {admin_user.telegram_id}: {e}")
 
@@ -386,7 +394,8 @@ async def callback_request_complete(
     try:
         await callback.bot.send_message(
             request_user.telegram_id,
-            f"✅ Ваша заявка #{request_id} выполнена специалистом {user.full_name}!",
+            f"✅ Ваша заявка #{request_id} выполнена специалистом {html.escape(user.full_name)}!",
+            parse_mode="HTML"
         )
     except Exception as e:
         logger.warning(f"Не удалось уведомить пользователя {request_user.telegram_id}: {e}")
@@ -437,11 +446,12 @@ async def callback_request_cancel(
         await callback.bot.send_message(
             request_user.telegram_id,
             f"❌ Ваша заявка #{request_id} отклонена администратором.",
+            parse_mode=None
         )
     except Exception as e:
         logger.warning(f"Не удалось уведомить пользователя {request_user.telegram_id}: {e}")
 
-    await callback.message.edit_text(f"❌ Заявка #{request_id} отклонена")
+    await callback.message.edit_text(f"❌ Заявка #{request_id} отклонена", parse_mode=None)
 
     logger.info(f"Admin {admin.telegram_id} отклонил заявку #{request_id}")
     await callback.answer()

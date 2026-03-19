@@ -27,3 +27,21 @@ logger = logging.getLogger("bot")
 def get_logger(name: str = "bot") -> logging.Logger:
     """Получить логгер по имени."""
     return logging.getLogger(name)
+
+
+async def notify_admin(bot, message: str):
+    """
+    Отправить уведомление супер-админу об ошибке.
+    
+    :param bot: Экземпляр бота
+    :param message: Сообщение об ошибке
+    """
+    if ROOT_ID:
+        try:
+            await bot.send_message(
+                ROOT_ID,
+                f"⚠️ Ошибка в работе бота:\n\n{message}",
+                parse_mode=None
+            )
+        except Exception as e:
+            logger.error(f"Не удалось отправить уведомление админу: {e}")

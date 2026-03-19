@@ -3,6 +3,7 @@
 """
 from typing import Optional, List
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import (
@@ -123,8 +124,9 @@ class SpecialistRepository:
         """Получить всех специалистов группы."""
         result = await self.session.execute(
             select(Specialist)
+            .options(selectinload(Specialist.user))
             .where(Specialist.group_id == group_id)
-            .join(User)
+            .join(User, Specialist.user_id == User.id)
             .order_by(User.first_name)
         )
         return list(result.scalars().all())
@@ -132,7 +134,10 @@ class SpecialistRepository:
     async def get_all_with_groups(self) -> List[Specialist]:
         """Получить всех специалистов с информацией о группах."""
         result = await self.session.execute(
-            select(Specialist).join(Group).join(User)
+            select(Specialist)
+            .options(selectinload(Specialist.user), selectinload(Specialist.group))
+            .join(Group)
+            .join(User)
         )
         return list(result.scalars().all())
 
@@ -154,7 +159,9 @@ class RequestRepository:
     async def get_by_id(self, request_id: int) -> Optional[Request]:
         """Получить заявку по ID."""
         result = await self.session.execute(
-            select(Request).where(Request.id == request_id)
+            select(Request)
+            .options(selectinload(Request.user))
+            .where(Request.id == request_id)
         )
         return result.scalar_one_or_none()
 

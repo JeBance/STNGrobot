@@ -1,6 +1,7 @@
 """
 Обработчики команд специалиста.
 """
+import html
 import logging
 from aiogram import Router, F
 from aiogram.types import Message
@@ -19,31 +20,31 @@ async def cmd_spec_my_requests(message: Message, session):
     user_repo = UserRepository(session)
     spec_repo = SpecialistRepository(session)
     assignment_repo = AssignmentRepository(session)
-    
+
     user = await user_repo.get_by_telegram_id(message.from_user.id)
 
     if not user:
-        await message.answer("❌ Вы не зарегистрированы. Используйте /start")
+        await message.answer("❌ Вы не зарегистрированы. Используйте /start", parse_mode=None)
         return
 
     specialist = await spec_repo.get_by_user_id(user.id)
     if not specialist:
-        await message.answer("❌ Вы не являетесь специалистом.")
+        await message.answer("❌ Вы не являетесь специалистом.", parse_mode=None)
         return
 
     assignments = await assignment_repo.get_pending_by_specialist(specialist.id)
 
     if not assignments:
-        await message.answer("📋 У вас нет активных заявок.")
+        await message.answer("📋 У вас нет активных заявок.", parse_mode=None)
         return
 
     text = "📋 Ваши активные заявки:\n\n"
     for assignment in assignments[:20]:
         request = assignment.request
         req_user = request.user
-        text += f"#{request.id} от {req_user.full_name}: {request.text[:50]}...\n"
+        text += f"#{request.id} от {html.escape(req_user.full_name)}: {html.escape(request.text[:50])}...\n"
 
     if len(assignments) > 20:
         text += f"\n... и ещё {len(assignments) - 20} заявок"
 
-    await message.answer(text)
+    await message.answer(text, parse_mode=None)

@@ -53,7 +53,7 @@ class User(Base):
 
     # Relationships
     specialist: Mapped[Optional["Specialist"]] = relationship(
-        "Specialist", back_populates="user", uselist=False, cascade="all, delete-orphan"
+        "Specialist", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="Specialist.user_id"
     )
     created_requests: Mapped[List["Request"]] = relationship(
         "Request", back_populates="user", foreign_keys="Request.user_id"
@@ -120,7 +120,7 @@ class Specialist(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="specialist")
+    user: Mapped["User"] = relationship("User", back_populates="specialist", foreign_keys=[user_id])
     group: Mapped["Group"] = relationship("Group", back_populates="specialists")
     assigned_by_user: Mapped["User"] = relationship(
         "User", back_populates="assigned_specialists", foreign_keys=[assigned_by]
