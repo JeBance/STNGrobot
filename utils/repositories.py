@@ -148,9 +148,9 @@ class RequestRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, user_id: int, text: str) -> Request:
+    async def create(self, user_id: int, text: str, media_file_id: Optional[str] = None, media_type: Optional[str] = None) -> Request:
         """Создать новую заявку."""
-        request = Request(user_id=user_id, text=text)
+        request = Request(user_id=user_id, text=text, media_file_id=media_file_id, media_type=media_type)
         self.session.add(request)
         await self.session.commit()
         await self.session.refresh(request)

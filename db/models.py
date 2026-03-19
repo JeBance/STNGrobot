@@ -141,6 +141,8 @@ class Request(Base):
         Integer, ForeignKey("users.id"), nullable=False, index=True
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    media_file_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    media_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(
         Enum(RequestStatus), default=RequestStatus.NEW, nullable=False, index=True
     )

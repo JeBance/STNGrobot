@@ -158,9 +158,35 @@ async def callback_spec_select(
     keyboard = get_request_status_keyboard(request_id)
 
     try:
-        await callback.bot.send_message(
-            spec_user.telegram_id, text, reply_markup=keyboard, parse_mode="HTML"
-        )
+        # Если есть медиа, отправляем его
+        if request.media_file_id and request.media_type == "photo":
+            await callback.bot.send_photo(
+                spec_user.telegram_id, 
+                photo=request.media_file_id, 
+                caption=text, 
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        elif request.media_file_id and request.media_type == "document":
+            await callback.bot.send_document(
+                spec_user.telegram_id,
+                document=request.media_file_id,
+                caption=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        elif request.media_file_id and request.media_type == "voice":
+            await callback.bot.send_voice(
+                spec_user.telegram_id,
+                voice=request.media_file_id,
+                caption=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            await callback.bot.send_message(
+                spec_user.telegram_id, text, reply_markup=keyboard, parse_mode="HTML"
+            )
     except TelegramBadRequest as e:
         logger.warning(f"Не удалось отправить заявку специалисту {spec_user.telegram_id}: {e}")
         await callback.answer("❌ Не удалось отправить заявку специалисту", show_alert=True)
@@ -238,9 +264,35 @@ async def callback_send_to_all(
     for specialist in specialists:
         spec_user = specialist.user
         try:
-            await callback.bot.send_message(
-                spec_user.telegram_id, text, reply_markup=keyboard, parse_mode="HTML"
-            )
+            # Если есть медиа, отправляем его
+            if request.media_file_id and request.media_type == "photo":
+                await callback.bot.send_photo(
+                    spec_user.telegram_id,
+                    photo=request.media_file_id,
+                    caption=text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+            elif request.media_file_id and request.media_type == "document":
+                await callback.bot.send_document(
+                    spec_user.telegram_id,
+                    document=request.media_file_id,
+                    caption=text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+            elif request.media_file_id and request.media_type == "voice":
+                await callback.bot.send_voice(
+                    spec_user.telegram_id,
+                    voice=request.media_file_id,
+                    caption=text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+            else:
+                await callback.bot.send_message(
+                    spec_user.telegram_id, text, reply_markup=keyboard, parse_mode="HTML"
+                )
             sent_count += 1
         except TelegramBadRequest as e:
             logger.warning(f"Не удалось отправить заявку специалисту {spec_user.telegram_id}: {e}")

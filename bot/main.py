@@ -7,7 +7,7 @@ import logging
 import logging.config
 from pathlib import Path
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Message
@@ -104,7 +104,8 @@ async def handle_text_message(message: Message, session):
     # Ответ пользователю
     await message.answer(
         f"✅ Заявка #{request.id} принята.\n"
-        f"Ожидайте назначения специалиста."
+        f"Ожидайте назначения специалиста.",
+        parse_mode=None
     )
 
     # Уведомляем админов
@@ -138,6 +139,264 @@ async def handle_text_message(message: Message, session):
             logger.warning(f"Не удалось уведомить адина {admin_user.telegram_id}: {e}")
 
     logger.info(f"Создана заявка #{request.id} от пользователя {user.telegram_id}")
+
+
+# Обработчик фото
+@dp.message(F.photo, lambda m: not m.caption or not m.caption.startswith("/"))
+async def handle_photo_message(message: Message, session):
+    """Обработка фото с заявкой."""
+    logger.debug(f"Получено фото от {message.from_user.id}")
+
+    # Проверка rate limiting
+    user_id = message.from_user.id
+    if not request_limiter.is_allowed(user_id):
+        remaining_time = request_limiter.get_remaining_time(user_id)
+        await message.answer(
+            f"⚠️ Слишком много заявок! Пожалуйста, подождите {remaining_time} сек.",
+            parse_mode=None
+        )
+        return
+
+    from utils.repositories import UserRepository, RequestRepository, GroupRepository
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    user_repo = UserRepository(session)
+    request_repo = RequestRepository(session)
+    group_repo = GroupRepository(session)
+
+    user = await user_repo.get_or_create(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+
+    # Получаем фото (наилучшее качество - последний элемент)
+    photo = message.photo[-1]
+    caption = message.caption or ""
+
+    # Создаём заявку
+    request = await request_repo.create(
+        user_id=user.id, 
+        text=caption or "📷 Фото без описания",
+        media_file_id=photo.file_id,
+        media_type="photo"
+    )
+
+    # Ответ пользователю
+    await message.answer(
+        f"✅ Заявка #{request.id} принята.\n"
+        f"Ожидайте назначения специалиста.",
+        parse_mode=None
+    )
+
+    # Уведомляем админов
+    admins = await user_repo.get_all_by_role(UserRole.ADMIN)
+    roots = await user_repo.get_all_by_role(UserRole.ROOT)
+    all_admins = admins + roots
+
+    groups = await group_repo.get_all()
+
+    text = (
+        f"🆕 Новая заявка #{request.id}\n\n"
+        f"От: {html.escape(user.full_name)}\n"
+        f"Username: @{html.escape(user.username or 'нет')}\n"
+        f"ID: {user.telegram_id}\n\n"
+        f"Текст: {html.escape(caption or 'Фото без описания')}"
+    )
+
+    if groups:
+        keyboard = get_groups_keyboard(groups, request.id)
+    else:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="⚠️ Нет доступных групп", callback_data="no_groups")
+        builder.button(text="❌ Отклонить", callback_data=f"request_cancel:{request.id}")
+        builder.adjust(1)
+        keyboard = builder.as_markup()
+
+    for admin_user in all_admins:
+        try:
+            # Отправляем фото с текстом
+            await bot.send_photo(
+                admin_user.telegram_id, 
+                photo=photo.file_id, 
+                caption=text, 
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось уведомить адина {admin_user.telegram_id}: {e}")
+
+    logger.info(f"Создана заявка #{request.id} с фото от пользователя {user.telegram_id}")
+
+
+# Обработчик документов (файлов)
+@dp.message(F.document, lambda m: not m.caption or not m.caption.startswith("/"))
+async def handle_document_message(message: Message, session):
+    """Обработка файлов с заявкой."""
+    logger.debug(f"Получен документ от {message.from_user.id}")
+
+    user_id = message.from_user.id
+    if not request_limiter.is_allowed(user_id):
+        remaining_time = request_limiter.get_remaining_time(user_id)
+        await message.answer(
+            f"⚠️ Слишком много заявок! Пожалуйста, подождите {remaining_time} сек.",
+            parse_mode=None
+        )
+        return
+
+    from utils.repositories import UserRepository, RequestRepository, GroupRepository
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    user_repo = UserRepository(session)
+    request_repo = RequestRepository(session)
+    group_repo = GroupRepository(session)
+
+    user = await user_repo.get_or_create(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+
+    document = message.document
+    caption = message.caption or ""
+
+    request = await request_repo.create(
+        user_id=user.id,
+        text=f"📎 Файл: {document.file_name}\n\n{caption}" if caption else f"📎 Файл: {document.file_name}",
+        media_file_id=document.file_id,
+        media_type="document"
+    )
+
+    await message.answer(
+        f"✅ Заявка #{request.id} принята.\n"
+        f"Ожидайте назначения специалиста.",
+        parse_mode=None
+    )
+
+    admins = await user_repo.get_all_by_role(UserRole.ADMIN)
+    roots = await user_repo.get_all_by_role(UserRole.ROOT)
+    all_admins = admins + roots
+
+    groups = await group_repo.get_all()
+
+    text = (
+        f"🆕 Новая заявка #{request.id}\n\n"
+        f"От: {html.escape(user.full_name)}\n"
+        f"Username: @{html.escape(user.username or 'нет')}\n"
+        f"ID: {user.telegram_id}\n\n"
+        f"Файл: {html.escape(document.file_name)}\n"
+        f"Текст: {html.escape(caption or 'Без описания')}"
+    )
+
+    if groups:
+        keyboard = get_groups_keyboard(groups, request.id)
+    else:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="⚠️ Нет доступных групп", callback_data="no_groups")
+        builder.button(text="❌ Отклонить", callback_data=f"request_cancel:{request.id}")
+        builder.adjust(1)
+        keyboard = builder.as_markup()
+
+    for admin_user in all_admins:
+        try:
+            await bot.send_document(
+                admin_user.telegram_id,
+                document=document.file_id,
+                caption=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось уведомить адина {admin_user.telegram_id}: {e}")
+
+    logger.info(f"Создана заявка #{request.id} с файлом от пользователя {user.telegram_id}")
+
+
+# Обработчик голосовых сообщений
+@dp.message(F.voice, lambda m: not m.caption or not m.caption.startswith("/"))
+async def handle_voice_message(message: Message, session):
+    """Обработка голосовых сообщений с заявкой."""
+    logger.debug(f"Получено голосовое от {message.from_user.id}")
+
+    user_id = message.from_user.id
+    if not request_limiter.is_allowed(user_id):
+        remaining_time = request_limiter.get_remaining_time(user_id)
+        await message.answer(
+            f"⚠️ Слишком много заявок! Пожалуйста, подождите {remaining_time} сек.",
+            parse_mode=None
+        )
+        return
+
+    from utils.repositories import UserRepository, RequestRepository, GroupRepository
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    user_repo = UserRepository(session)
+    request_repo = RequestRepository(session)
+    group_repo = GroupRepository(session)
+
+    user = await user_repo.get_or_create(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+
+    voice = message.voice
+    caption = message.caption or ""
+    duration = voice.duration
+
+    request = await request_repo.create(
+        user_id=user.id,
+        text=f"🎤 Голосовое сообщение ({duration} сек)\n\n{caption}" if caption else f"🎤 Голосовое сообщение ({duration} сек)",
+        media_file_id=voice.file_id,
+        media_type="voice"
+    )
+
+    await message.answer(
+        f"✅ Заявка #{request.id} принята.\n"
+        f"Ожидайте назначения специалиста.",
+        parse_mode=None
+    )
+
+    admins = await user_repo.get_all_by_role(UserRole.ADMIN)
+    roots = await user_repo.get_all_by_role(UserRole.ROOT)
+    all_admins = admins + roots
+
+    groups = await group_repo.get_all()
+
+    text = (
+        f"🆕 Новая заявка #{request.id}\n\n"
+        f"От: {html.escape(user.full_name)}\n"
+        f"Username: @{html.escape(user.username or 'нет')}\n"
+        f"ID: {user.telegram_id}\n\n"
+        f"🎤 Голосовое сообщение ({duration} сек)\n"
+        f"Текст: {html.escape(caption or 'Без описания')}"
+    )
+
+    if groups:
+        keyboard = get_groups_keyboard(groups, request.id)
+    else:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="⚠️ Нет доступных групп", callback_data="no_groups")
+        builder.button(text="❌ Отклонить", callback_data=f"request_cancel:{request.id}")
+        builder.adjust(1)
+        keyboard = builder.as_markup()
+
+    for admin_user in all_admins:
+        try:
+            await bot.send_voice(
+                admin_user.telegram_id,
+                voice=voice.file_id,
+                caption=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось уведомить адина {admin_user.telegram_id}: {e}")
+
+    logger.info(f"Создана заявка #{request.id} с голосовым от пользователя {user.telegram_id}")
 
 
 # Регистрируем роутеры ПОСЛЕ общего обработчика
